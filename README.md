@@ -1,10 +1,24 @@
+# A.I. Workflow Starterkit
+
+This project is a modular starter kit designed to jumpstart the development of AI-driven workflows. It integrates a FastAPI-based backend with a modern React/Vite frontend, providing a complete framework for building, testing, and scaling AI applications.
+
+Key features include:
+
+- **Inference Logging:** Automatically tracks and logs AI model inference calls.
+- **Project Management:** Create and manage projects with AI-generated content.
+- **Real-Time Updates:** WebSocket-based dashboard for live project updates.
+- **Extensibility:** A clean, modular structure that can be easily extended for additional workflows.
+
+
 ## Quickstart
 1. git clone
 2. `cd src && pip install -r requirements.txt`
-3. `python -m uvicorn app:app --host 0.0.0.0 --port 8000`
+3. `cp env.template .env` && Fill in your OPENAI_API_KEY value (unless its in ENV already)
+4. `python -m uvicorn app:app --host 0.0.0.0 --port 8000`
 5. open new terminal tab
 6. `cd frontend/src && npm install`
 7. `npm run dev`
+
 
 ## Reasonings
 
