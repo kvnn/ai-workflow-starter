@@ -1,5 +1,3 @@
-# src/apps/storebot/routes.py
-
 import asyncio
 from datetime import datetime, timedelta
 import json
@@ -33,7 +31,9 @@ from llm import ask_llm
 from logger import logger
 
 from database import get_session
+
 from .models import ProjectTable
+from .prompts import get_haiku_prompt
 
 
 app = FastAPI()
@@ -41,6 +41,49 @@ router = APIRouter()
 
 project_events = {}
 websocket_connections = {}
+
+
+''' Haiku Stuff '''
+class HaikuRequest(BaseModel):
+    description: str
+    project_id: int
+
+
+@router.post("/haiku")
+async def generate_haiku(haiku_req: HaikuRequest):
+    try:
+        llm_query, llm_response_format = get_haiku_prompt(haiku_req.description)
+        haiku = await ask_llm(
+            messages=[{"role": "user", "content": llm_query}],
+            response_format=llm_response_format
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    new_haiku = haiku.model_dump() if hasattr(haiku, "model_dump") else haiku
+
+    with get_session() as session:
+        project = session.query(ProjectTable).filter(ProjectTable.id == haiku_req.project_id).first()
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        # Ensure project.data is a dict with a "haikus" list.
+        if project.data is None:
+            project.data = {"haikus": []}
+        elif "haikus" not in project.data:
+            project.data["haikus"] = []
+
+        project.data["haikus"].append(new_haiku)
+        session.add(project)
+        flag_modified(project, "data")
+        session.commit()
+
+    # Trigger the project event to update WebSocket clients.
+    if haiku_req.project_id in project_events:
+        project_events[haiku_req.project_id].set()
+
+    return new_haiku
+    
 
 
 ''' Project Stuff '''
@@ -72,7 +115,7 @@ async def create_project(project: ProjectCreate):
 
 ''' Project UI Sync '''
 @router.websocket("/dashboard/{project_id}")
-async def dashboard_websocket(websocket: WebSocket, project_id: str):
+async def dashboard_websocket(websocket: WebSocket, project_id: int):
     await websocket.accept()
 
     logger.info(f"[dashboard_websocket] connected")

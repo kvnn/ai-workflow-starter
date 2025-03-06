@@ -89,4 +89,4 @@ async def ask_llm(messages, response_format=None, model=default_model):
 
     if not success:
         raise Exception(answer)
-    return answer, completion
+    return answer
