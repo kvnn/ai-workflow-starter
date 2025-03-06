@@ -23,7 +23,9 @@
 
 ### `database.py`
 - we want to be able to insert / updated / retrieve data via the SQLAlchemy ORM or raw SQL depending on our preferences
-- we want to easily transform our database selections
+- when developing locally, we want a sqlite db that is set up automatically, will be re-created if deleted (as a simple schema migration trick) but also provides complete SQL support / behavior
+
+> "but only for models that have been imported and share the same Base. In SQLAlchemy, Base.metadata.create_all(bind=engine) inspects the metadata registered with that Base. This means you must import (or otherwise reference) the model modules (e.g., from other apps/{app name}/models.py) before calling create_all. Otherwise, those models won’t be registered and their tables won’t be created."
 
 ### `models.py`
 - these are our database models (via SQLAlchemy)
@@ -37,6 +39,7 @@
 
 ## `frontend/src`
 - this is a React app with all of the baggage (npm , yarn, vite, and on and on)
+- vite provides a fast development server that instantly reflects changes in the browser without full reloads
 - we use websocket connections to the backend to keep the client up to date
 - React MUI is worth all of that baggage, and this setup provides a very nice local development experience
 - deploying this frontend is pretty simple : it compiles into a flat, performant package that can be pushed to an S3 bucket / Cloudfront distribution with simple Git hooks
