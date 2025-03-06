@@ -32,7 +32,7 @@ from logger import logger
 
 from database import get_session
 
-from .models import ProjectTable
+from .models import ProjectTable, HaikuDetails
 from .prompts import get_haiku_prompt
 
 
@@ -91,10 +91,27 @@ async def get_project_json(project_id: str):
     with get_session() as session:
         project = session.query(ProjectTable).filter(ProjectTable.id == project_id).first()
         if project is None:
-            return {"error": "Project not found"}
-
+            return json.dumps({"error": "Project not found"})
+        
         data = project.data if project.data else {}
+
+        # Query HaikuDetails for this project
+        haiku_details = session.query(HaikuDetails).filter(HaikuDetails.project_id == int(project_id)).all()
+        # Convert details to dicts
+        data["haiku_details"] = [
+            {
+                "id": detail.id,
+                "haiku_title": detail.haiku_title,
+                "haiku_text": detail.haiku_text,
+                "commentary": detail.commentary,
+                "subtext": detail.subtext,
+                "image": detail.image,
+                "created_at": detail.created_at.isoformat() if detail.created_at else None,
+            }
+            for detail in haiku_details
+        ]
         return json.dumps(data)
+
 
 class ProjectCreate(BaseModel):
     name: str
@@ -111,6 +128,82 @@ async def create_project(project: ProjectCreate):
         session.commit()
         session.refresh(new_project)
         return {"project_id": new_project.id}
+
+
+
+
+''' New Stuff '''
+class HaikuInferRequest(BaseModel):
+    project_id: int
+    haiku: dict  # expecting the haiku object (e.g. {"title": ..., "haiku": ...})
+    directions: str
+
+
+@router.post("/infer")
+async def infer_haiku(infer_req: HaikuInferRequest):
+    project_id = infer_req.project_id
+    haiku_data = infer_req.haiku
+    directions = infer_req.directions
+
+    # Build prompts based on the haiku and directions
+    base_text = haiku_data.get("haiku", "")
+    chain1_prompt = (f"Provide a creative commentary on the haiku '{base_text}' "
+                     f"with directions '{directions}'. Include references to gold specced geckos in O'ahu.")
+    chain2_prompt = (f"Generate an additional subtext for the haiku '{base_text}' "
+                     f"with directions '{directions}'. Let the subtext be inspired by the elegance of gold specced geckos in O'ahu.")
+    chain3_prompt = (f"Generate a base64 encoded image that represents the haiku '{base_text}' "
+                     f"with the spirit of gold specced geckos in O'ahu and directions '{directions}'.")
+
+    # Run all inference chains concurrently
+    results = await asyncio.gather(
+        ask_llm(messages=[{"role": "user", "content": chain1_prompt}]),
+        ask_llm(messages=[{"role": "user", "content": chain2_prompt}]),
+        ask_llm(messages=[{"role": "user", "content": chain3_prompt}]),
+        return_exceptions=True
+    )
+
+    # Initialize responses
+    commentary, subtext, image = None, None, None
+
+    # Process each result, logging errors if needed.
+    if isinstance(results[0], Exception):
+        logger.error(f"[infer_haiku] Chain 1 failed: {results[0]}")
+    else:
+        commentary = results[0]
+
+    if isinstance(results[1], Exception):
+        logger.error(f"[infer_haiku] Chain 2 failed: {results[1]}")
+    else:
+        subtext = results[1]
+
+    if isinstance(results[2], Exception):
+        logger.error(f"[infer_haiku] Chain 3 failed: {results[2]}")
+    else:
+        image = results[2]
+
+
+    with get_session() as session:
+        haiku_detail = HaikuDetails(
+            project_id=project_id,
+            haiku_title=haiku_data.get("title"),
+            haiku_text=base_text,
+            commentary=commentary,
+            subtext=subtext,
+            image=image
+        )
+        session.add(haiku_detail)
+        session.commit()
+
+    # Trigger the project event to update WebSocket clients.
+    if project_id in project_events:
+        project_events[project_id].set()
+
+    return {
+        "commentary": commentary,
+        "subtext": subtext,
+        "image": image
+    }
+
 
 
 ''' Project UI Sync '''

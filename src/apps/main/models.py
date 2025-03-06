@@ -45,3 +45,17 @@ class ProjectTable(Base):
     data = Column(JSON)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+
+class HaikuDetails(Base):
+    ''' This holds additional inference details for haikus '''
+    __tablename__ = 'ai_haiku_details'
+    
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    project_id = Column(Integer, nullable=False)
+    haiku_title = Column(String, nullable=True)
+    haiku_text = Column(Text, nullable=False)
+    commentary = Column(Text, nullable=True)
+    subtext = Column(Text, nullable=True)
+    image = Column(Text, nullable=True)  # base64 encoded image
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)

@@ -22,6 +22,8 @@ const ProjectDashboard = () => {
   const [description, setDescription] = useState("");
   const [haikuLoading, setHaikuLoading] = useState(false);
   const [haikus, setHaikus] = useState<any[]>([]);
+  const [haikuDetails, setHaikuDetails] = useState<any[]>([]);
+
 
   useEffect(() => {
     if (!id) return;
@@ -33,18 +35,23 @@ const ProjectDashboard = () => {
     });
 
     rws.addEventListener('message', (event) => {
-      console.log("Received data:", event.data);
-      try {
-        const projectData = JSON.parse(event.data);
-        if (projectData && projectData.haikus) {
-          // reverse order of haikus
-          const reversedHaikus = projectData.haikus.reverse();
-          setHaikus(reversedHaikus);
+        console.log("Received data:", event.data);
+        try {
+          const projectData = JSON.parse(event.data);
+          if (projectData) {
+            if (projectData.haikus) {
+              const reversedHaikus = projectData.haikus.reverse();
+              setHaikus(reversedHaikus);
+            }
+            if (projectData.haiku_details) {
+              console.log("Received haiku details:", projectData.haiku_details);
+              setHaikuDetails(projectData.haiku_details);
+            }
+          }
+        } catch (err) {
+          console.error("Error parsing project data:", err);
         }
-      } catch (err) {
-        console.error("Error parsing project data:", err);
-      }
-    });
+      });
 
     rws.addEventListener('error', (error) => {
       console.error("WebSocket error:", error);
@@ -123,7 +130,8 @@ const ProjectDashboard = () => {
       <Box sx={{ mt: 4 }}>
         <Typography variant="h5">Haikus</Typography>
         {haikus.map((haiku, index) => (
-          <HaikuCard key={index} haiku={haiku} />
+          <HaikuCard key={index} haiku={haiku} projectId={id!} details={haikuDetails} />
+
         ))}
       </Box>
     </Container>
