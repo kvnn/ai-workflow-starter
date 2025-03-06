@@ -1,7 +1,7 @@
 ## Quickstart
 1. git clone
 2. `cd src && pip install -r requirements.txt`
-3. `python -m uvicorn app:app --host 0.0.0.0 --port 8800`
+3. `python -m uvicorn app:app --host 0.0.0.0 --port 8000`
 5. open new terminal tab
 6. `cd frontend/src && npm install`
 7. `npm run dev`
