@@ -29,7 +29,7 @@ const LandingPage = () => {
         const response = await fetch('http://localhost:8000/projects');
         const data = await response.json();
         if (response.ok) {
-          setProjects(data.projects); // Ensure API response structure is correct
+          setProjects(data); // Ensure API response structure is correct
         } else {
           console.error("Error fetching projects:", data.detail);
         }
@@ -66,16 +66,12 @@ const LandingPage = () => {
   return (
     <Container maxWidth="sm">
       <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mt: 8 }}>
-        <Typography variant="h4" gutterBottom>
-          Welcome
+        <Typography variant="h3" sx={{ mt: 4, mb: 2 }}>
+          Projects
         </Typography>
         <Button variant="contained" onClick={() => setOpen(true)}>
           Create New Project
         </Button>
-
-        <Typography variant="h5" sx={{ mt: 4 }}>
-          Existing Projects
-        </Typography>
         <List>
           {projects.map((project) => (
             <ListItem 

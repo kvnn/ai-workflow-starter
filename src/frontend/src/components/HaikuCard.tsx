@@ -39,6 +39,21 @@ const HaikuCard: React.FC<HaikuCardProps> = ({ haiku }) => {
     setEditModalOpen(true);
   };
 
+  const generateImagePrompts = async (haikuId: string) => {
+    setLoading(true);
+    try {
+      await fetch("http://localhost:8000/projects/generate-image-prompts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ haiku_id: haikuId }),
+      });
+    } catch (error) {
+      console.error("Error generating image prompts:", error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   const handleSaveEdit = async () => {
     try {
       await fetch("http://localhost:8000/projects/update-image-prompt", {
@@ -65,7 +80,7 @@ const HaikuCard: React.FC<HaikuCardProps> = ({ haiku }) => {
       <CardHeader
         title={haiku.title || "Untitled Haiku"}
         action={
-          <IconButton onClick={() => generateImage(haiku.id)} disabled={loading}>
+          <IconButton onClick={() => generateImagePrompts(haiku.id)} disabled={loading}>
             <WebStoriesIcon color="primary" />
           </IconButton>
         }
@@ -82,7 +97,7 @@ const HaikuCard: React.FC<HaikuCardProps> = ({ haiku }) => {
               <Card key={prompt.id} sx={{ p: 2, minWidth: 250, position: "relative" }}>
                 <IconButton
                   size="small"
-                  sx={{ position: "absolute", top: 4, right: 4 }}
+                  sx={{ position: "absolute", top: -4, right: 4 }}
                   onClick={() => openEditModal(prompt)}
                 >
                   <EditIcon fontSize="small" />

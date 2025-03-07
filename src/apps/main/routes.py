@@ -104,7 +104,12 @@ async def create_project(project: ProjectCreate):
         session.refresh(new_project)
         return {"project_id": new_project.id}
 
-
+@router.get("/")
+async def get_projects():
+    with get_session() as session:
+        # Get projects, most recent first
+        projects = session.query(ProjectTable).order_by(ProjectTable.id.desc()).all()
+        return [{"id": project.id, "name": project.name} for project in projects]
 
 
 ''' New Stuff '''
@@ -112,8 +117,8 @@ class HaikuInferRequest(BaseModel):
     haiku_id: int
 
 
-@router.post("/get-image-prompts")
-async def get_image_prompts(req: HaikuInferRequest, background_tasks: BackgroundTasks):
+@router.post("/generate-image-prompts")
+async def generate_image_prompts(req: HaikuInferRequest, background_tasks: BackgroundTasks):
     """ 
     Queue background tasks for generating image prompts one by one,  
     notifying the WebSocket after each prompt is saved.
