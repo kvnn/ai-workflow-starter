@@ -32,7 +32,7 @@ from logger import logger
 
 from database import get_session
 
-from .models import ProjectTable, HaikuTable, HaikuImagePromptTable
+from .models import ProjectTable, HaikuTable, HaikuImagePromptTable, get_project_data, get_haiku_by_id, save_image_prompt
 from .prompts import get_haiku_prompt, get_haiku_image_prompt
 from .schemas import Haiku, HaikuImagePrompt
 
@@ -85,37 +85,6 @@ async def generate_haiku(haiku_req: HaikuRequest):
 
 
 ''' Project Stuff '''
-async def get_project_json(project_id: int):
-    with get_session() as session:
-        project = session.query(ProjectTable).filter(ProjectTable.id == project_id).first()
-        if not project:
-            return json.dumps({"error": "Project not found"})
-
-        # Ensure we're using the correct Haiku model from `models.py`
-        haikus = session.query(HaikuTable).filter(HaikuTable.project_id == project_id).order_by(HaikuTable.created_at.desc()).all()
-
-        # Convert haikus to JSON format
-        haikus_list = [
-            {
-                "id": haiku.id,
-                "title": haiku.title,
-                "text": haiku.text,
-                "created_at": haiku.created_at.isoformat()
-            }
-            for haiku in haikus
-        ]
-
-        data = {
-            "project_id": project.id,
-            "name": project.name,
-            "haikus": haikus_list
-        }
-
-        logger.info(f"[get_project_json] Sending updated project data: {data}")
-
-        return json.dumps(data)
-
-
 
 class ProjectCreate(BaseModel):
     name: str
@@ -140,65 +109,50 @@ class HaikuInferRequest(BaseModel):
 
 
 @router.post("/get-image-prompts")
-async def get_image_prompts(req: HaikuInferRequest):
-    '''
-    Get image prompts for the haiku. Note that this function runs 3 inference calls concurrently,
-    and waits for them to finish before responding to the client.
-    '''
+async def get_image_prompts(req: HaikuInferRequest, background_tasks: BackgroundTasks):
+    """ 
+    Queue background tasks for generating image prompts one by one,  
+    notifying the WebSocket after each prompt is saved.
+    """
     haiku_id = req.haiku_id
-    with get_session() as session:
-        haiku = session.query(HaikuTable).filter(HaikuTable.id == haiku_id).first()
-        if not haiku:
-            raise HTTPException(status_code=404, detail="Haiku not found")
-        haiku_text = haiku.text
-        project_id = haiku.project_id
+    haiku = get_haiku_by_id(haiku_id)
 
-    prompt_1, response_format_1 = get_haiku_image_prompt(
-        haiku_text, further_details=None
-    )
-    prompt_2, response_format_2 = get_haiku_image_prompt(
-        haiku_text, further_details="Write an image prompt that would make Ghengis Khan proud."
-    )
-    prompt_3, response_format_3 = get_haiku_image_prompt(
-        haiku_text, further_details="Write an image prompt for a scene that would make a Gold-specked gecko write this haiku."
-    )
+    if not haiku:
+        raise HTTPException(status_code=404, detail="Haiku not found")
 
-    # Run all inference chains concurrently
-    results = await asyncio.gather(
-        ask_llm(
-            messages=[{"role": "user", "content": prompt_1}],
-            response_format=response_format_1
-        ),
-        ask_llm(
-            messages=[{"role": "user", "content": prompt_2}],
-            response_format=response_format_2
-        ),
-        ask_llm(
-            messages=[{"role": "user", "content": prompt_3}],
-            response_format=response_format_3
-        ),
-        return_exceptions=True
-    )
+    prompts = [
+        get_haiku_image_prompt(haiku['text'], further_details=None),
+        get_haiku_image_prompt(haiku['text'], further_details="Write an image prompt that would make Genghis Khan proud."),
+        get_haiku_image_prompt(haiku['text'], further_details="Write an image prompt for a scene that would make a Gold-specked gecko write this haiku."),
+    ]
 
-    with get_session() as session:
-        for i, image_prompt in enumerate(results):
-            if isinstance(image_prompt, Exception):
-                logger.error(f"[get_haiku_image_prompts] Error generating image prompt {i+1}: {image_prompt}")
-                continue
-            logger.info(f"[get_haiku_image_prompts] Image prompt {i+1}: {image_prompt}")
-            new_image_prompt = HaikuImagePromptTable(
-                haiku_id=haiku_id,
-                image_prompt=image_prompt.text
-            )
-            session.add(new_image_prompt)
-            session.commit()
+    for prompt_text, response_format in prompts:
+        background_tasks.add_task(
+            process_image_prompt,
+            haiku_id=haiku_id,
+            response_format=response_format,
+            prompt_text=prompt_text,
+            project_id=haiku['project_id']
+        )
 
-    if project_id in project_events:
-        project_events[project_id].set()
+    return {"message": "Image prompts are being generated."}
 
-    return {
-        "image_prompts": [image_prompt.model_dump() for image_prompt in results if not isinstance(image_prompt, Exception)]
-    }
+
+async def process_image_prompt(haiku_id: int, prompt_text: str, project_id: int, response_format):
+    """ Background task for generating an image prompt and updating WebSocket """
+    try:
+        image_prompt = await ask_llm(response_format=response_format, messages=[{"role": "user", "content": prompt_text}])
+        
+        prompt_id = save_image_prompt(
+            haiku_id,
+            prompt_text=image_prompt.text
+        )
+
+        # Notify WebSocket after each image prompt is created
+        if project_id in project_events:
+            project_events[project_id].set()
+    except Exception as e:
+        logger.error(f"[process_image_prompt] Error generating prompt for haiku {haiku_id}: {e}")
 
 
 
@@ -214,14 +168,8 @@ async def dashboard_websocket(websocket: WebSocket, project_id: int):
         project_events[project_id] = asyncio.Event()
 
     # Send initial dashboard data.
-    try:
-        with get_session() as session:
-            project_json = await get_project_json(project_id)
-            await websocket.send_text(project_json)
-    except Exception as e:
-        logger.error(f"[dashboard_websocket] Error sending initial message over WS for dashboard {project_id}: {e}")
-        await websocket.close()
-        return
+    project_data = get_project_data(project_id)
+    await websocket.send_text(json.dumps(project_data))
 
     websocket_open = True
 
@@ -234,14 +182,13 @@ async def dashboard_websocket(websocket: WebSocket, project_id: int):
             logger.error(f"[dashboard_websocket] Error waiting for event : {e}", exc_info=True)
             break
 
-
         logger.info(f"[dashboard_websocket] event triggered")
 
         # asyncio.create_task(improve_dashboard_data())
         
         try:
-            project_json = await get_project_json(project_id)
-            await websocket.send_text(project_json)
+            project_data = get_project_data(project_id)
+            await websocket.send_text(json.dumps(project_data))
             pass
         except WebSocketDisconnect:
             logger.info(f"[dashboard_websocket] WebSocket disconnected for dashboard {project_id}")

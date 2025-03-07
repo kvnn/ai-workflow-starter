@@ -1,70 +1,50 @@
-import React, { useState } from 'react';
-import { Card, CardHeader, CardContent, Typography, IconButton, Dialog, DialogTitle, DialogContent, TextField, DialogActions, Button } from '@mui/material';
-import WebStoriesIcon from '@mui/icons-material/WebStories';
+import React, { useState } from "react";
+import { Card, CardHeader, CardContent, Typography, IconButton } from "@mui/material";
+import WebStoriesIcon from "@mui/icons-material/WebStories";
+import HaikuDetailsCard from "./HaikuDetailsCard";
 
 interface HaikuCardProps {
   haiku: any;
 }
 
 const HaikuCard: React.FC<HaikuCardProps> = ({ haiku }) => {
-  let haikuObj: any = {};
-  if (typeof haiku === 'string') {
-    try {
-      haikuObj = JSON.parse(haiku);
-    } catch (e) {
-      haikuObj = { text: haiku };
-    }
-  } else if (typeof haiku === 'object' && haiku !== null) {
-    haikuObj = haiku;
-  }
-
-  const [directions, setDirections] = useState("");
   const [loading, setLoading] = useState(false);
 
   const generateImagePrompts = async () => {
     setLoading(true);
     try {
-      const response = await fetch("http://localhost:8000/projects/get-image-prompts", {
+      await fetch("http://localhost:8000/projects/get-image-prompts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          haiku_id: haikuObj.id,
-        }),
+        body: JSON.stringify({ haiku_id: haiku.id }),
       });
-      const data = await response.json();
-      if (!response.ok) {
-        alert("generateImagePrompts error: " + (data));
-      } else {
-        console.log("generateImagePrompts output:", data);
-      }
     } catch (error) {
-      alert("generateImagePrompts error: " + error);
+      console.error("generateImagePrompts error:", error);
     } finally {
       setLoading(false);
-      setDirections("");
     }
   };
 
-  
-
   return (
-    <div style={{ position: 'relative', marginBottom: '2rem' }}>
+    <div style={{ position: "relative", marginBottom: "2rem" }}>
       <Card>
         <CardHeader
-          title={haikuObj.title || "Untitled Haiku"}
+          title={haiku.title || "Untitled Haiku"}
           action={
-            <IconButton onClick={() => generateImagePrompts()}>
+            <IconButton onClick={generateImagePrompts} disabled={loading}>
               <WebStoriesIcon color="primary" />
             </IconButton>
           }
         />
         <CardContent>
-          <Typography variant="body1">
-            {haikuObj.text}
-          </Typography>
+          <Typography variant="body1">{haiku.text}</Typography>
         </CardContent>
       </Card>
 
+      {haiku.image_prompts &&
+        haiku.image_prompts.map((prompt, index) => (
+          <HaikuDetailsCard key={prompt.id} details={prompt.text} offset={index * 50} />
+        ))}
     </div>
   );
 };

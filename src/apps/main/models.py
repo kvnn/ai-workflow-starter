@@ -1,5 +1,5 @@
-import uuid
 import datetime
+import uuid
 
 from sqlalchemy import (
     Column,
@@ -13,10 +13,11 @@ from sqlalchemy import (
     Boolean,
     create_engine
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, joinedload
 from sqlalchemy.ext.declarative import declarative_base
 
 from config import settings
+from database import get_session
 
 
 Base = declarative_base()
@@ -84,3 +85,54 @@ class HaikuImageTable(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     
     image_prompt = relationship('HaikuImagePromptTable', back_populates='images')
+
+
+''' Database interfaces '''
+
+def get_haiku_by_id(haiku_id):
+    """ Fetch a Haiku by its ID, along with its Project ID """
+    with get_session() as session:
+        haiku = session.query(HaikuTable).filter(HaikuTable.id == haiku_id).first()
+        return haiku and {column.name: getattr(haiku, column.name) for column in haiku.__table__.columns}
+
+
+def save_image_prompt(haiku_id: int, prompt_text: str):
+    """ Store a new image prompt for a given Haiku """
+    with get_session() as session:
+        new_prompt = HaikuImagePromptTable(
+            haiku_id=haiku_id,
+            image_prompt=prompt_text
+        )
+        session.add(new_prompt)
+        session.commit()
+        return new_prompt.id
+
+
+def get_project_data(project_id):
+    """ Fetch project data including haikus and image prompts """
+    with get_session() as session:
+        project = (
+            session.query(ProjectTable)
+            .options(joinedload(ProjectTable.haikus).joinedload(HaikuTable.image_prompts))
+            .filter(ProjectTable.id == project_id)
+            .first()
+        )
+
+        if not project:
+            return None
+
+        return {
+            "project_id": project.id,
+            "name": project.name,
+            "haikus": [
+                {
+                    "id": haiku.id,
+                    "title": haiku.title,
+                    "text": haiku.text,
+                    "image_prompts": [
+                        {"id": prompt.id, "text": prompt.image_prompt} for prompt in haiku.image_prompts
+                    ],
+                }
+                for haiku in project.haikus
+            ],
+        }
