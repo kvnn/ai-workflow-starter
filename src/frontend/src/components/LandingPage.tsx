@@ -1,6 +1,4 @@
-// src/frontend/src/components/LandingPage.tsx
-
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Button,
@@ -11,15 +9,37 @@ import {
   TextField,
   Container,
   Typography,
-  Box
+  Box,
+  List,
+  ListItem,
+  ListItemText,
 } from '@mui/material';
 
 const LandingPage = () => {
   const [open, setOpen] = useState(false);
   const [projectName, setProjectName] = useState('');
-  const [projectPurpose, setProjectPurpose] = useState('');
   const [loading, setLoading] = useState(false);
+  const [projects, setProjects] = useState<any[]>([]); // Store projects
   const navigate = useNavigate();
+
+  // Fetch list of projects from backend
+  useEffect(() => {
+    const fetchProjects = async () => {
+      try {
+        const response = await fetch('http://localhost:8000/projects');
+        const data = await response.json();
+        if (response.ok) {
+          setProjects(data.projects); // Ensure API response structure is correct
+        } else {
+          console.error("Error fetching projects:", data.detail);
+        }
+      } catch (error) {
+        console.error("Error fetching projects:", error);
+      }
+    };
+
+    fetchProjects();
+  }, []);
 
   const handleCreateProject = async () => {
     setLoading(true);
@@ -27,7 +47,7 @@ const LandingPage = () => {
       const response = await fetch('http://localhost:8000/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: projectName, purpose: projectPurpose }),
+        body: JSON.stringify({ name: projectName }),
       });
       const data = await response.json();
       if (response.ok) {
@@ -52,7 +72,23 @@ const LandingPage = () => {
         <Button variant="contained" onClick={() => setOpen(true)}>
           Create New Project
         </Button>
+
+        <Typography variant="h5" sx={{ mt: 4 }}>
+          Existing Projects
+        </Typography>
+        <List>
+          {projects.map((project) => (
+            <ListItem 
+              key={project.id} 
+              button 
+              onClick={() => navigate(`/projects/${project.id}`)}
+            >
+              <ListItemText primary={project.name} />
+            </ListItem>
+          ))}
+        </List>
       </Box>
+
       <Dialog open={open} onClose={() => setOpen(false)}>
         <DialogTitle>Create New Project</DialogTitle>
         <DialogContent>
@@ -65,15 +101,6 @@ const LandingPage = () => {
             variant="outlined"
             value={projectName}
             onChange={(e) => setProjectName(e.target.value)}
-          />
-          <TextField
-            margin="dense"
-            label="Project Purpose"
-            type="text"
-            fullWidth
-            variant="outlined"
-            value={projectPurpose}
-            onChange={(e) => setProjectPurpose(e.target.value)}
           />
         </DialogContent>
         <DialogActions>

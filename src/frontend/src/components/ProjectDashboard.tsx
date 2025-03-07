@@ -1,5 +1,3 @@
-// src/frontend/src/components/ProjectDashboard.tsx
-
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
@@ -18,47 +16,28 @@ import HaikuCard from './HaikuCard';
 
 const ProjectDashboard = () => {
   const { id } = useParams();
-  const [haikuModalOpen, setHaikuModalOpen] = useState(false);
-  const [description, setDescription] = useState("");
-  const [haikuLoading, setHaikuLoading] = useState(false);
+  const [projectName, setProjectName] = useState('');
   const [haikus, setHaikus] = useState<any[]>([]);
-  const [haikuDetails, setHaikuDetails] = useState<any[]>([]);
-
+  const [haikuModalOpen, setHaikuModalOpen] = useState(false);
+  const [description, setDescription] = useState('');
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!id) return;
     const wsUrl = `ws://localhost:8000/projects/dashboard/${id}`;
     const rws = new ReconnectingWebSocket(wsUrl);
 
-    rws.addEventListener('open', () => {
-      console.log(`WebSocket connected for project: ${id}`);
-    });
-
     rws.addEventListener('message', (event) => {
-        console.log("Received data:", event.data);
-        try {
-          const projectData = JSON.parse(event.data);
-          if (projectData) {
-            if (projectData.haikus) {
-              const reversedHaikus = projectData.haikus.reverse();
-              setHaikus(reversedHaikus);
-            }
-            if (projectData.haiku_details) {
-              console.log("Received haiku details:", projectData.haiku_details);
-              setHaikuDetails(projectData.haiku_details);
-            }
-          }
-        } catch (err) {
-          console.error("Error parsing project data:", err);
+      console.log("Received data:", event.data);
+      try {
+        const projectData = JSON.parse(event.data);
+        setProjectName(projectData.name);
+        if (projectData && projectData.haikus) {
+          setHaikus(projectData.haikus);
         }
-      });
-
-    rws.addEventListener('error', (error) => {
-      console.error("WebSocket error:", error);
-    });
-
-    rws.addEventListener('close', () => {
-      console.log("WebSocket connection closed.");
+      } catch (err) {
+        console.error("Error parsing project data:", err);
+      }
     });
 
     return () => {
@@ -67,12 +46,15 @@ const ProjectDashboard = () => {
   }, [id]);
 
   const handleHaikuSubmit = async () => {
-    setHaikuLoading(true);
+    setLoading(true);
     try {
       const response = await fetch("http://localhost:8000/projects/haiku", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description, project_id: parseInt(id || "0") }),
+        body: JSON.stringify({
+          project_id: parseInt(id || "0"),
+          description: description,
+        }),
       });
       const data = await response.json();
       if (!response.ok) {
@@ -83,7 +65,7 @@ const ProjectDashboard = () => {
     } catch (error) {
       alert("Error creating haiku: " + error);
     } finally {
-      setHaikuLoading(false);
+      setLoading(false);
       setHaikuModalOpen(false);
       setDescription("");
     }
@@ -93,14 +75,8 @@ const ProjectDashboard = () => {
     <Container maxWidth="md">
       <Box sx={{ mt: 4 }}>
         <Typography variant="h4" gutterBottom>
-          Project Dashboard
+          {projectName}
         </Typography>
-        <Typography variant="subtitle1" gutterBottom>
-          Viewing project with ID: {id}
-        </Typography>
-        <Button variant="contained" onClick={() => setHaikuModalOpen(true)}>
-          Create Haiku
-        </Button>
       </Box>
 
       <Dialog open={haikuModalOpen} onClose={() => setHaikuModalOpen(false)}>
@@ -118,20 +94,22 @@ const ProjectDashboard = () => {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setHaikuModalOpen(false)} disabled={haikuLoading}>
+          <Button onClick={() => setHaikuModalOpen(false)} disabled={loading}>
             Cancel
           </Button>
-          <Button onClick={handleHaikuSubmit} variant="contained" disabled={haikuLoading}>
-            {haikuLoading ? 'Creating...' : 'Create'}
+          <Button onClick={handleHaikuSubmit} variant="contained" disabled={loading}>
+            {loading ? 'Creating...' : 'Create'}
           </Button>
         </DialogActions>
       </Dialog>
 
       <Box sx={{ mt: 4 }}>
         <Typography variant="h5">Haikus</Typography>
+        <Button sx={{ mb: 4 }} variant="contained" onClick={() => setHaikuModalOpen(true)}>
+          Create Haiku
+        </Button>
         {haikus.map((haiku, index) => (
-          <HaikuCard key={index} haiku={haiku} projectId={id!} details={haikuDetails} />
-
+          <HaikuCard key={index} haiku={haiku} />
         ))}
       </Box>
     </Container>

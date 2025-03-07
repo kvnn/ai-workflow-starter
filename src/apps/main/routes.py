@@ -27,13 +27,14 @@ import redis
 import stripe
 
 from config import settings
-from llm import ask_llm
+from llm import ask_llm, get_llm_image
 from logger import logger
 
 from database import get_session
 
-from .models import ProjectTable, HaikuDetails
-from .prompts import get_haiku_prompt
+from .models import ProjectTable, HaikuTable, HaikuImagePromptTable
+from .prompts import get_haiku_prompt, get_haiku_image_prompt
+from .schemas import Haiku, HaikuImagePrompt
 
 
 app = FastAPI()
@@ -60,69 +61,70 @@ async def generate_haiku(haiku_req: HaikuRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    new_haiku = haiku.model_dump() if hasattr(haiku, "model_dump") else haiku
-
     with get_session() as session:
         project = session.query(ProjectTable).filter(ProjectTable.id == haiku_req.project_id).first()
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
 
-        # Ensure project.data is a dict with a "haikus" list.
-        if project.data is None:
-            project.data = {"haikus": []}
-        elif "haikus" not in project.data:
-            project.data["haikus"] = []
-
-        project.data["haikus"].append(new_haiku)
-        session.add(project)
-        flag_modified(project, "data")
+        new_haiku = HaikuTable(
+            project_id=haiku_req.project_id,
+            title=haiku.title,
+            text=haiku.text
+        )
+        session.add(new_haiku)
         session.commit()
+        session.refresh(new_haiku)
 
-    # Trigger the project event to update WebSocket clients.
+    # Trigger WebSocket update
     if haiku_req.project_id in project_events:
         project_events[haiku_req.project_id].set()
 
-    return new_haiku
+    return {"success": True}
+
     
 
 
 ''' Project Stuff '''
-async def get_project_json(project_id: str):
+async def get_project_json(project_id: int):
     with get_session() as session:
         project = session.query(ProjectTable).filter(ProjectTable.id == project_id).first()
-        if project is None:
+        if not project:
             return json.dumps({"error": "Project not found"})
-        
-        data = project.data if project.data else {}
 
-        # Query HaikuDetails for this project
-        haiku_details = session.query(HaikuDetails).filter(HaikuDetails.project_id == int(project_id)).all()
-        # Convert details to dicts
-        data["haiku_details"] = [
+        # Ensure we're using the correct Haiku model from `models.py`
+        haikus = session.query(HaikuTable).filter(HaikuTable.project_id == project_id).order_by(HaikuTable.created_at.desc()).all()
+
+        # Convert haikus to JSON format
+        haikus_list = [
             {
-                "id": detail.id,
-                "haiku_title": detail.haiku_title,
-                "haiku_text": detail.haiku_text,
-                "commentary": detail.commentary,
-                "subtext": detail.subtext,
-                "image": detail.image,
-                "created_at": detail.created_at.isoformat() if detail.created_at else None,
+                "id": haiku.id,
+                "title": haiku.title,
+                "text": haiku.text,
+                "created_at": haiku.created_at.isoformat()
             }
-            for detail in haiku_details
+            for haiku in haikus
         ]
+
+        data = {
+            "project_id": project.id,
+            "name": project.name,
+            "haikus": haikus_list
+        }
+
+        logger.info(f"[get_project_json] Sending updated project data: {data}")
+
         return json.dumps(data)
+
 
 
 class ProjectCreate(BaseModel):
     name: str
-    purpose: str
 
 @router.post("/")
 async def create_project(project: ProjectCreate):
     with get_session() as session:
         new_project = ProjectTable(
             name=project.name,
-            data={"purpose": project.purpose}
         )
         session.add(new_project)
         session.commit()
@@ -134,74 +136,68 @@ async def create_project(project: ProjectCreate):
 
 ''' New Stuff '''
 class HaikuInferRequest(BaseModel):
-    project_id: int
-    haiku: dict  # expecting the haiku object (e.g. {"title": ..., "haiku": ...})
-    directions: str
+    haiku_id: int
 
 
-@router.post("/infer")
-async def infer_haiku(infer_req: HaikuInferRequest):
-    project_id = infer_req.project_id
-    haiku_data = infer_req.haiku
-    directions = infer_req.directions
+@router.post("/get-image-prompts")
+async def get_image_prompts(req: HaikuInferRequest):
+    '''
+    Get image prompts for the haiku. Note that this function runs 3 inference calls concurrently,
+    and waits for them to finish before responding to the client.
+    '''
+    haiku_id = req.haiku_id
+    with get_session() as session:
+        haiku = session.query(HaikuTable).filter(HaikuTable.id == haiku_id).first()
+        if not haiku:
+            raise HTTPException(status_code=404, detail="Haiku not found")
+        haiku_text = haiku.text
+        project_id = haiku.project_id
 
-    # Build prompts based on the haiku and directions
-    base_text = haiku_data.get("haiku", "")
-    chain1_prompt = (f"Provide a creative commentary on the haiku '{base_text}' "
-                     f"with directions '{directions}'. Include references to gold specced geckos in O'ahu.")
-    chain2_prompt = (f"Generate an additional subtext for the haiku '{base_text}' "
-                     f"with directions '{directions}'. Let the subtext be inspired by the elegance of gold specced geckos in O'ahu.")
-    chain3_prompt = (f"Generate a base64 encoded image that represents the haiku '{base_text}' "
-                     f"with the spirit of gold specced geckos in O'ahu and directions '{directions}'.")
+    prompt_1, response_format_1 = get_haiku_image_prompt(
+        haiku_text, further_details=None
+    )
+    prompt_2, response_format_2 = get_haiku_image_prompt(
+        haiku_text, further_details="Write an image prompt that would make Ghengis Khan proud."
+    )
+    prompt_3, response_format_3 = get_haiku_image_prompt(
+        haiku_text, further_details="Write an image prompt for a scene that would make a Gold-specked gecko write this haiku."
+    )
 
     # Run all inference chains concurrently
     results = await asyncio.gather(
-        ask_llm(messages=[{"role": "user", "content": chain1_prompt}]),
-        ask_llm(messages=[{"role": "user", "content": chain2_prompt}]),
-        ask_llm(messages=[{"role": "user", "content": chain3_prompt}]),
+        ask_llm(
+            messages=[{"role": "user", "content": prompt_1}],
+            response_format=response_format_1
+        ),
+        ask_llm(
+            messages=[{"role": "user", "content": prompt_2}],
+            response_format=response_format_2
+        ),
+        ask_llm(
+            messages=[{"role": "user", "content": prompt_3}],
+            response_format=response_format_3
+        ),
         return_exceptions=True
     )
 
-    # Initialize responses
-    commentary, subtext, image = None, None, None
-
-    # Process each result, logging errors if needed.
-    if isinstance(results[0], Exception):
-        logger.error(f"[infer_haiku] Chain 1 failed: {results[0]}")
-    else:
-        commentary = results[0]
-
-    if isinstance(results[1], Exception):
-        logger.error(f"[infer_haiku] Chain 2 failed: {results[1]}")
-    else:
-        subtext = results[1]
-
-    if isinstance(results[2], Exception):
-        logger.error(f"[infer_haiku] Chain 3 failed: {results[2]}")
-    else:
-        image = results[2]
-
-
     with get_session() as session:
-        haiku_detail = HaikuDetails(
-            project_id=project_id,
-            haiku_title=haiku_data.get("title"),
-            haiku_text=base_text,
-            commentary=commentary,
-            subtext=subtext,
-            image=image
-        )
-        session.add(haiku_detail)
-        session.commit()
+        for i, image_prompt in enumerate(results):
+            if isinstance(image_prompt, Exception):
+                logger.error(f"[get_haiku_image_prompts] Error generating image prompt {i+1}: {image_prompt}")
+                continue
+            logger.info(f"[get_haiku_image_prompts] Image prompt {i+1}: {image_prompt}")
+            new_image_prompt = HaikuImagePromptTable(
+                haiku_id=haiku_id,
+                image_prompt=image_prompt.text
+            )
+            session.add(new_image_prompt)
+            session.commit()
 
-    # Trigger the project event to update WebSocket clients.
     if project_id in project_events:
         project_events[project_id].set()
 
     return {
-        "commentary": commentary,
-        "subtext": subtext,
-        "image": image
+        "image_prompts": [image_prompt.model_dump() for image_prompt in results if not isinstance(image_prompt, Exception)]
     }
 
 

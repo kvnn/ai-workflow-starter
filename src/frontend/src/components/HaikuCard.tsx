@@ -1,15 +1,12 @@
 import React, { useState } from 'react';
 import { Card, CardHeader, CardContent, Typography, IconButton, Dialog, DialogTitle, DialogContent, TextField, DialogActions, Button } from '@mui/material';
-import SettingsIcon from '@mui/icons-material/Settings';
-import HaikuDetailsCard from './HaikuDetailsCard';
+import WebStoriesIcon from '@mui/icons-material/WebStories';
 
 interface HaikuCardProps {
   haiku: any;
-  projectId: string;
-  details: any[];
 }
 
-const HaikuCard: React.FC<HaikuCardProps> = ({ haiku, projectId, details }) => {
+const HaikuCard: React.FC<HaikuCardProps> = ({ haiku }) => {
   let haikuObj: any = {};
   if (typeof haiku === 'string') {
     try {
@@ -21,36 +18,34 @@ const HaikuCard: React.FC<HaikuCardProps> = ({ haiku, projectId, details }) => {
     haikuObj = haiku;
   }
 
-  const [inferenceDialogOpen, setInferenceDialogOpen] = useState(false);
   const [directions, setDirections] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleInfer = async () => {
+  const generateImagePrompts = async () => {
     setLoading(true);
     try {
-      const response = await fetch("http://localhost:8000/projects/infer", {
+      const response = await fetch("http://localhost:8000/projects/get-image-prompts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          project_id: parseInt(projectId),
-          haiku: haikuObj,
-          directions: directions,
+          haiku_id: haikuObj.id,
         }),
       });
       const data = await response.json();
       if (!response.ok) {
-        alert("Error during inference: " + (data.detail || data.error));
+        alert("generateImagePrompts error: " + (data));
       } else {
-        console.log("Inference output:", data);
+        console.log("generateImagePrompts output:", data);
       }
     } catch (error) {
-      alert("Error during inference: " + error);
+      alert("generateImagePrompts error: " + error);
     } finally {
       setLoading(false);
-      setInferenceDialogOpen(false);
       setDirections("");
     }
   };
+
+  
 
   return (
     <div style={{ position: 'relative', marginBottom: '2rem' }}>
@@ -58,46 +53,18 @@ const HaikuCard: React.FC<HaikuCardProps> = ({ haiku, projectId, details }) => {
         <CardHeader
           title={haikuObj.title || "Untitled Haiku"}
           action={
-            <IconButton onClick={() => setInferenceDialogOpen(true)}>
-              <SettingsIcon color="primary" />
+            <IconButton onClick={() => generateImagePrompts()}>
+              <WebStoriesIcon color="primary" />
             </IconButton>
           }
         />
         <CardContent>
           <Typography variant="body1">
-            {haikuObj.haiku}
+            {haikuObj.text}
           </Typography>
         </CardContent>
       </Card>
 
-      {details && details.map((detail, index) => (
-        <HaikuDetailsCard key={detail.id} details={detail} offset={index * 50} />
-      ))}
-
-
-      <Dialog open={inferenceDialogOpen} onClose={() => setInferenceDialogOpen(false)}>
-        <DialogTitle>Enter Directions for Inference</DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus
-            margin="dense"
-            label="Directions"
-            type="text"
-            fullWidth
-            variant="outlined"
-            value={directions}
-            onChange={(e) => setDirections(e.target.value)}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setInferenceDialogOpen(false)} disabled={loading}>
-            Cancel
-          </Button>
-          <Button onClick={handleInfer} variant="contained" disabled={loading}>
-            {loading ? 'Processing...' : 'Submit'}
-          </Button>
-        </DialogActions>
-      </Dialog>
     </div>
   );
 };

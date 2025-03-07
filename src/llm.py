@@ -1,3 +1,4 @@
+import base64
 import json
 
 from openai import AsyncOpenAI
@@ -11,11 +12,38 @@ from apps.main.models import LLMLogTable
 
 client = AsyncOpenAI(api_key=settings.openai_api_key)
 
+# Defaults
 if settings.env == "prod":
     default_model = 'gpt-4o-2024-08-06'
 else:
     default_model = 'gpt-4o-mini'
-    # default_model = 'gpt-4o-2024-08-06'
+
+default_image_model = 'dall-e-3'
+default_image_size = "1024x1024"
+default_image_response_format = 'b64_json' # or url
+default_image_style = 'natural' # or vivid
+
+
+# Inference functions
+async def get_llm_image(
+        prompt,
+        model=default_image_model,
+        n=1,
+        size=default_image_size,
+        response_format=default_image_response_format,
+        style=default_image_style
+):
+    image_response = await client.images.generate(
+        prompt=prompt,
+        model=model,
+        n=n,
+        size=size,
+        response_format=response_format,
+        style=style
+    )
+    if response_format == 'base64':
+        return [base64.b64decode(obj.b64_json) for obj in image_response.data]
+    return image_response
 
 
 async def ask_llm(messages, response_format=None, model=default_model):

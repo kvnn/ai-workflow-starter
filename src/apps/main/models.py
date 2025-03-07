@@ -42,20 +42,45 @@ class ProjectTable(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     uuid = Column(String, default=lambda: str(uuid.uuid4()))
     name = Column(String)
-    data = Column(JSON)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+    
+    haikus = relationship('HaikuTable', back_populates='project')
 
 
-class HaikuDetails(Base):
-    ''' This holds additional inference details for haikus '''
-    __tablename__ = 'ai_haiku_details'
+class HaikuTable(Base):
+    ''' This holds our haiku data '''
+    __tablename__ = 'ai_haiku'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    project_id = Column(Integer, ForeignKey('ai_project.id'))
+    title = Column(String, nullable=True)
+    text = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+    
+    project = relationship('ProjectTable', back_populates='haikus')
+    image_prompts = relationship('HaikuImagePromptTable', back_populates='haiku')
+
+
+class HaikuImagePromptTable(Base):
+    __tablename__ = 'ai_haiku_image_prompt'
     
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    project_id = Column(Integer, nullable=False)
-    haiku_title = Column(String, nullable=True)
-    haiku_text = Column(Text, nullable=False)
-    commentary = Column(Text, nullable=True)
-    subtext = Column(Text, nullable=True)
-    image = Column(Text, nullable=True)  # base64 encoded image
+    haiku_id = Column(Integer, ForeignKey('ai_haiku.id'))
+    image_prompt = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    
+    haiku = relationship('HaikuTable', back_populates='image_prompts')
+    images = relationship('HaikuImageTable', back_populates='image_prompt')
+
+
+class HaikuImageTable(Base):
+    __tablename__ = 'ai_haiku_image'
+    
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    haiku_image_prompt_id = Column(String, ForeignKey('ai_haiku_image_prompt.id'))
+    image_b64 = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    
+    image_prompt = relationship('HaikuImagePromptTable', back_populates='images')

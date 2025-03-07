@@ -43,8 +43,9 @@ Key features include:
 
 ### `models.py`
 - these are our database models (via SQLAlchemy)
+- you want to append `Table` to these, or there will be confusion with `schemas.py`
 
-### `schema.py`
+### `schemas.py`
 - these are our LLM models that we will be asking the LLM to return its responses in, a.k.a. structured responses or json mode
 - they have some overlap with `models.py`, and its tempting to use inheritance but in practice its not worth the code reduction
 
