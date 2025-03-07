@@ -71,7 +71,9 @@ const HaikuCard: React.FC<HaikuCardProps> = ({ haiku }) => {
         }
       />
       <CardContent>
-        <Typography variant="body1">{haiku.text}</Typography>
+        <Typography 
+            variant="body1"
+        >{haiku.text}</Typography>
 
         {/* Image Prompts Section */}
         {haiku.image_prompts && haiku.image_prompts.length > 0 && (
@@ -86,7 +88,7 @@ const HaikuCard: React.FC<HaikuCardProps> = ({ haiku }) => {
                   <EditIcon fontSize="small" />
                 </IconButton>
 
-                <Typography variant="body2">{prompt.text}</Typography>
+                <Typography sx={{ mb: 2}} variant="body2">{prompt.text}</Typography>
 
                 {/* "Generate Image" Button */}
                 <IconButton

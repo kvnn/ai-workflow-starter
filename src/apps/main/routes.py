@@ -34,7 +34,8 @@ from database import get_session
 
 from .models import (
     ProjectTable, HaikuTable, HaikuImagePromptTable,
-    get_project_data, get_haiku_by_id, save_image_prompt, save_generated_image
+    get_project_data, get_haiku_by_id, save_image_prompt, save_generated_image,
+    get_image_prompt_by_id
 )
 from .prompts import get_haiku_prompt, get_haiku_image_prompt
 from .schemas import Haiku, HaikuImagePrompt
@@ -201,7 +202,9 @@ async def process_image_generation(prompt_id: str, haiku_id: int):
 
         logger.info(f"[process_image_generation] Generating image for prompt_id={prompt_id}")
         
-        image_data = await get_llm_image(haiku['text'])
+        prompt = get_image_prompt_by_id(prompt_id)
+        
+        image_data = await get_llm_image(prompt['image_prompt'])
         
         if not image_data or not isinstance(image_data, list) or not image_data[0]:
             raise ValueError("No valid image data returned from LLM. Returned: {image_data}")

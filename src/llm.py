@@ -41,6 +41,22 @@ async def get_llm_image(
         response_format=response_format,
         style=style
     )
+    
+    with get_session() as session:
+        try:
+            log_entry = LLMLogTable(
+                model=model,
+                messages=prompt,
+                response=str(image_response)[:100],
+            )
+            session.add(log_entry)
+            session.commit()
+        except Exception as e:
+            logger.error(f"Failed to log LLM call: {e}")
+            session.rollback()
+        finally:
+            session.close()
+    
     if response_format == 'b64_json':
         return [base64.b64decode(obj.b64_json) for obj in image_response.data]
     return image_response

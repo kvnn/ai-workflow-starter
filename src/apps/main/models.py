@@ -95,6 +95,12 @@ def get_haiku_by_id(haiku_id):
         haiku = session.query(HaikuTable).filter(HaikuTable.id == haiku_id).first()
         return haiku and {column.name: getattr(haiku, column.name) for column in haiku.__table__.columns}
 
+def get_image_prompt_by_id(prompt_id):
+    """ Fetch an Image Prompt by its ID """
+    with get_session() as session:
+        prompt = session.query(HaikuImagePromptTable).filter(HaikuImagePromptTable.id == prompt_id).first()
+        return prompt and {column.name: getattr(prompt, column.name) for column in prompt.__table__.columns}
+
 
 def save_image_prompt(haiku_id: int, prompt_text: str):
     """ Store a new image prompt for a given Haiku """
@@ -151,7 +157,7 @@ def get_project_data(project_id):
                             "id": prompt.id,
                             "text": prompt.image_prompt,
                             "images": [
-                                {"id": img.id, "b64": img.image_b64} for img in prompt.images
+                                {"id": img.id, "b64": img.image_b64} for img in sorted(prompt.images, key=lambda i: i.created_at, reverse=True)
                             ],
                         }
                         for prompt in sorted(haiku.image_prompts, key=lambda p: p.created_at, reverse=True)
