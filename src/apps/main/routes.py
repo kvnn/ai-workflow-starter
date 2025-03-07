@@ -155,6 +155,28 @@ async def process_image_prompt(haiku_id: int, prompt_text: str, project_id: int,
         logger.error(f"[process_image_prompt] Error generating prompt for haiku {haiku_id}: {e}")
 
 
+class UpdateImagePromptRequest(BaseModel):
+    prompt_id: str
+    new_text: str
+
+@router.put("/update-image-prompt")
+async def update_image_prompt(req: UpdateImagePromptRequest):
+    """ Update an existing image prompt """
+    with get_session() as session:
+        prompt = session.query(HaikuImagePromptTable).filter(HaikuImagePromptTable.id == req.prompt_id).first()
+        if not prompt:
+            raise HTTPException(status_code=404, detail="Image prompt not found")
+
+        prompt.image_prompt = req.new_text
+        session.commit()
+
+        # Notify WebSocket clients
+        project_id = prompt.haiku.project_id
+        if project_id in project_events:
+            project_events[project_id].set()
+
+        return {"message": "Image prompt updated successfully"}
+
 
 ''' Project UI Sync '''
 @router.websocket("/dashboard/{project_id}")

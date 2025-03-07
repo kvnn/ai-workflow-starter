@@ -129,10 +129,13 @@ def get_project_data(project_id):
                     "id": haiku.id,
                     "title": haiku.title,
                     "text": haiku.text,
+                    "created_at": haiku.created_at.isoformat(),
                     "image_prompts": [
-                        {"id": prompt.id, "text": prompt.image_prompt} for prompt in haiku.image_prompts
+                        {"id": prompt.id, "text": prompt.image_prompt}
+                        for prompt in sorted(haiku.image_prompts, key=lambda p: p.created_at, reverse=True)
                     ],
                 }
-                for haiku in project.haikus
+                for haiku in sorted(project.haikus, key=lambda h: h.created_at, reverse=True)
             ],
         }
+
