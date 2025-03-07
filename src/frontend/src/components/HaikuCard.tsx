@@ -5,7 +5,8 @@ import {
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import WebStoriesIcon from "@mui/icons-material/WebStories";
-import ImageIcon from "@mui/icons-material/Image"; // New icon for generating images
+import ImageIcon from "@mui/icons-material/Image";
+import ZoomInIcon from "@mui/icons-material/ZoomIn"; // Icon for viewing full image
 
 interface HaikuCardProps {
   haiku: any;
@@ -14,6 +15,8 @@ interface HaikuCardProps {
 const HaikuCard: React.FC<HaikuCardProps> = ({ haiku }) => {
   const [loading, setLoading] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
+  const [imageModalOpen, setImageModalOpen] = useState(false);
+  const [selectedImage, setSelectedImage] = useState("");
   const [editingPrompt, setEditingPrompt] = useState({ id: "", text: "" });
 
   const generateImage = async (promptId: string) => {
@@ -50,6 +53,11 @@ const HaikuCard: React.FC<HaikuCardProps> = ({ haiku }) => {
     } catch (error) {
       console.error("Error updating image prompt:", error);
     }
+  };
+
+  const openImageModal = (b64Image: string) => {
+    setSelectedImage(`data:image/png;base64,${b64Image}`);
+    setImageModalOpen(true);
   };
 
   return (
@@ -91,14 +99,21 @@ const HaikuCard: React.FC<HaikuCardProps> = ({ haiku }) => {
 
                 {/* Image Thumbnails */}
                 {prompt.images && prompt.images.length > 0 && (
-                  <Box sx={{ mt: 2, display: "flex", gap: 1 }}>
+                  <Box sx={{ mt: 2, mb: 4, display: "flex", gap: 1 }}>
                     {prompt.images.map((img) => (
                       <CardMedia
                         key={img.id}
                         component="img"
                         image={`data:image/png;base64,${img.b64}`}
                         alt="Generated"
-                        sx={{ borderRadius: 1, border: "1px solid #ccc", height: 80, width: 80 }}
+                        sx={{
+                          borderRadius: 1,
+                          border: "1px solid #ccc",
+                          height: 80,
+                          width: 80,
+                          cursor: "pointer",
+                        }}
+                        onClick={() => openImageModal(img.b64)}
                       />
                     ))}
                   </Box>
@@ -125,6 +140,26 @@ const HaikuCard: React.FC<HaikuCardProps> = ({ haiku }) => {
           <Button onClick={() => setEditModalOpen(false)}>Cancel</Button>
           <Button onClick={handleSaveEdit} variant="contained">Save</Button>
         </DialogActions>
+      </Dialog>
+
+      {/* Image Fullscreen Modal */}
+      <Dialog open={imageModalOpen} onClose={() => setImageModalOpen(false)} maxWidth="lg" fullWidth>
+        <DialogContent sx={{ display: "flex", justifyContent: "center", alignItems: "center", p: 2 }}>
+          {selectedImage && (
+            <a href={selectedImage} target="_blank" rel="noopener noreferrer">
+              <img
+                src={selectedImage}
+                alt="Generated"
+                style={{
+                  maxWidth: "95%",
+                  maxHeight: "95vh",
+                  objectFit: "contain",
+                  cursor: "pointer",
+                }}
+              />
+            </a>
+          )}
+        </DialogContent>
       </Dialog>
     </Card>
   );
