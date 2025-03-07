@@ -32,7 +32,10 @@ from logger import logger
 
 from database import get_session
 
-from .models import ProjectTable, HaikuTable, HaikuImagePromptTable, get_project_data, get_haiku_by_id, save_image_prompt
+from .models import (
+    ProjectTable, HaikuTable, HaikuImagePromptTable,
+    get_project_data, get_haiku_by_id, save_image_prompt, save_generated_image
+)
 from .prompts import get_haiku_prompt, get_haiku_image_prompt
 from .schemas import Haiku, HaikuImagePrompt
 
@@ -176,6 +179,45 @@ async def update_image_prompt(req: UpdateImagePromptRequest):
             project_events[project_id].set()
 
         return {"message": "Image prompt updated successfully"}
+
+
+class GenerateImageRequest(BaseModel):
+    prompt_id: str
+    haiku_id: int
+
+@router.post("/generate-image")
+async def generate_image(req: GenerateImageRequest, background_tasks: BackgroundTasks):
+    """ Generate an image for an image prompt in the background """
+    background_tasks.add_task(process_image_generation, req.prompt_id, req.haiku_id)
+    return {"message": "Image generation started."}
+
+
+async def process_image_generation(prompt_id: str, haiku_id: int):
+    """ Background task for generating an image and storing it in the database """
+    try:
+        haiku = get_haiku_by_id(haiku_id)
+        if not haiku:
+            raise HTTPException(status_code=404, detail="Haiku not found")
+
+        logger.info(f"[process_image_generation] Generating image for prompt_id={prompt_id}")
+        
+        image_data = await get_llm_image(haiku['text'])
+        
+        if not image_data or not isinstance(image_data, list) or not image_data[0]:
+            raise ValueError("No valid image data returned from LLM. Returned: {image_data}")
+
+        base64_image = base64.b64encode(image_data[0]).decode('utf-8')
+
+        save_generated_image(prompt_id, base64_image)
+
+        logger.info(f"[process_image_generation] Image successfully stored for prompt_id={prompt_id}")
+
+        # Notify WebSocket clients
+        if haiku['project_id'] in project_events:
+            project_events[haiku['project_id']].set()
+    
+    except Exception as e:
+        logger.error(f"[process_image_generation] Exception: {e}", exc_info=True)
 
 
 ''' Project UI Sync '''

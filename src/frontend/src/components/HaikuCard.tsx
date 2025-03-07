@@ -1,10 +1,11 @@
 import React, { useState } from "react";
 import {
   Card, CardHeader, CardContent, Typography, IconButton,
-  Dialog, DialogTitle, DialogContent, TextField, DialogActions, Button, Box
+  Dialog, DialogTitle, DialogContent, TextField, DialogActions, Button, Box, CardMedia
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import WebStoriesIcon from "@mui/icons-material/WebStories";
+import ImageIcon from "@mui/icons-material/Image"; // New icon for generating images
 
 interface HaikuCardProps {
   haiku: any;
@@ -15,16 +16,16 @@ const HaikuCard: React.FC<HaikuCardProps> = ({ haiku }) => {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingPrompt, setEditingPrompt] = useState({ id: "", text: "" });
 
-  const generateImagePrompts = async () => {
+  const generateImage = async (promptId: string) => {
     setLoading(true);
     try {
-      await fetch("http://localhost:8000/projects/get-image-prompts", {
+      await fetch("http://localhost:8000/projects/generate-image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ haiku_id: haiku.id }),
+        body: JSON.stringify({ prompt_id: promptId, haiku_id: haiku.id }),
       });
     } catch (error) {
-      console.error("generateImagePrompts error:", error);
+      console.error("Error generating image:", error);
     } finally {
       setLoading(false);
     }
@@ -56,7 +57,7 @@ const HaikuCard: React.FC<HaikuCardProps> = ({ haiku }) => {
       <CardHeader
         title={haiku.title || "Untitled Haiku"}
         action={
-          <IconButton onClick={generateImagePrompts} disabled={loading}>
+          <IconButton onClick={() => generateImage(haiku.id)} disabled={loading}>
             <WebStoriesIcon color="primary" />
           </IconButton>
         }
@@ -76,7 +77,32 @@ const HaikuCard: React.FC<HaikuCardProps> = ({ haiku }) => {
                 >
                   <EditIcon fontSize="small" />
                 </IconButton>
+
                 <Typography variant="body2">{prompt.text}</Typography>
+
+                {/* "Generate Image" Button */}
+                <IconButton
+                  size="small"
+                  sx={{ position: "absolute", bottom: 4, left: 4 }}
+                  onClick={() => generateImage(prompt.id)}
+                >
+                  <ImageIcon fontSize="small" />
+                </IconButton>
+
+                {/* Image Thumbnails */}
+                {prompt.images && prompt.images.length > 0 && (
+                  <Box sx={{ mt: 2, display: "flex", gap: 1 }}>
+                    {prompt.images.map((img) => (
+                      <CardMedia
+                        key={img.id}
+                        component="img"
+                        image={`data:image/png;base64,${img.b64}`}
+                        alt="Generated"
+                        sx={{ borderRadius: 1, border: "1px solid #ccc", height: 80, width: 80 }}
+                      />
+                    ))}
+                  </Box>
+                )}
               </Card>
             ))}
           </Box>

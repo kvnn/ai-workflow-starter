@@ -108,16 +108,32 @@ def save_image_prompt(haiku_id: int, prompt_text: str):
         return new_prompt.id
 
 
+def save_generated_image(prompt_id: str, base64_image: str):
+    """ Store a generated image in the database, linked to its image prompt """
+    with get_session() as session:
+        new_image = HaikuImageTable(
+            haiku_image_prompt_id=prompt_id,
+            image_b64=base64_image
+        )
+        session.add(new_image)
+        session.commit()
+
+        return new_image.id  # Return the new image ID if needed
+
+
 def get_project_data(project_id):
-    """ Fetch project data including haikus and image prompts """
+    """ Fetch project data including haikus, image prompts, and generated images """
     with get_session() as session:
         project = (
             session.query(ProjectTable)
-            .options(joinedload(ProjectTable.haikus).joinedload(HaikuTable.image_prompts))
+            .options(
+                joinedload(ProjectTable.haikus)
+                .joinedload(HaikuTable.image_prompts)
+                .joinedload(HaikuImagePromptTable.images)
+            )
             .filter(ProjectTable.id == project_id)
             .first()
         )
-
         if not project:
             return None
 
@@ -131,11 +147,16 @@ def get_project_data(project_id):
                     "text": haiku.text,
                     "created_at": haiku.created_at.isoformat(),
                     "image_prompts": [
-                        {"id": prompt.id, "text": prompt.image_prompt}
+                        {
+                            "id": prompt.id,
+                            "text": prompt.image_prompt,
+                            "images": [
+                                {"id": img.id, "b64": img.image_b64} for img in prompt.images
+                            ],
+                        }
                         for prompt in sorted(haiku.image_prompts, key=lambda p: p.created_at, reverse=True)
                     ],
                 }
                 for haiku in sorted(project.haikus, key=lambda h: h.created_at, reverse=True)
             ],
         }
-

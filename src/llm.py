@@ -41,7 +41,7 @@ async def get_llm_image(
         response_format=response_format,
         style=style
     )
-    if response_format == 'base64':
+    if response_format == 'b64_json':
         return [base64.b64decode(obj.b64_json) for obj in image_response.data]
     return image_response
 
