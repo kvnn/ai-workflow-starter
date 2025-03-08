@@ -6,7 +6,9 @@ import {
 import EditIcon from "@mui/icons-material/Edit";
 import WebStoriesIcon from "@mui/icons-material/WebStories";
 import ImageIcon from "@mui/icons-material/Image";
-import ZoomInIcon from "@mui/icons-material/ZoomIn"; // Icon for viewing full image
+import { Rating, Tooltip } from "@mui/material";
+import StarIcon from "@mui/icons-material/Star";
+import PsychologyIcon from "@mui/icons-material/Psychology";
 
 interface HaikuCardProps {
   haiku: any;
@@ -75,6 +77,21 @@ const HaikuCard: React.FC<HaikuCardProps> = ({ haiku }) => {
     setImageModalOpen(true);
   };
 
+  const generateCritique = async (haikuId: string) => {
+    setLoading(true);
+    try {
+      await fetch("http://localhost:8000/projects/haiku-critique", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ haiku_id: haikuId }),
+      });
+    } catch (error) {
+      console.error("Error generating critique:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <Card sx={{ mb: 4 }}>
       <CardHeader
@@ -139,6 +156,39 @@ const HaikuCard: React.FC<HaikuCardProps> = ({ haiku }) => {
             ))}
           </Box>
         )}
+
+<Box sx={{ mt: 2 }}>
+    <Button
+      variant="contained"
+      startIcon={<PsychologyIcon />}
+      onClick={() => generateCritique(haiku.id)}
+      disabled={loading}
+    >
+      Critique Haiku
+    </Button>
+
+    {haiku.critiques && haiku.critiques.length > 0 && (
+      <Box sx={{ mt: 2 }}>
+        <Typography variant="h6">Critique Scores</Typography>
+        {haiku.critiques.map((critique, index) => (
+          <Box key={index} sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+            <Tooltip title="Creativity">
+                <label>Creativity</label>
+              <Rating value={critique.creativity_score} readOnly precision={0.5} />
+            </Tooltip>
+            <Tooltip title="Vocabulary Density">
+                <label>Vocabularity Density</label>
+              <Rating value={critique.vocabulary_density} readOnly precision={0.5} />
+            </Tooltip>
+            <Tooltip title="Rizz Level">
+                <label>Rizz Level</label>
+              <Rating value={critique.rizz_level} readOnly precision={0.5} icon={<StarIcon />} />
+            </Tooltip>
+          </Box>
+        ))}
+      </Box>
+    )}
+  </Box>
       </CardContent>
 
       {/* Edit Image Prompt Modal */}

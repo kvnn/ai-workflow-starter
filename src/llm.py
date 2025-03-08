@@ -64,9 +64,9 @@ async def get_llm_image(
 
 async def ask_llm(messages, response_format=None, model=default_model):
     chat_settings = {
-        'model': model,
+        'model': model, # support non-openai models
         'messages': messages,
-        'temperature': 0.1,
+        'temperature': 0.1, # TODO: make this configurable
     }
 
     if response_format:

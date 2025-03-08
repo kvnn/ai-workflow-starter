@@ -128,7 +128,7 @@ def save_generated_image(prompt_id: str, base64_image: str):
 
 
 def get_project_data(project_id):
-    """ Fetch project data including haikus, image prompts, and generated images """
+    """ Fetch project data including haikus, image prompts, generated images, and critiques """
     with get_session() as session:
         project = (
             session.query(ProjectTable)
@@ -140,6 +140,7 @@ def get_project_data(project_id):
             .filter(ProjectTable.id == project_id)
             .first()
         )
+
         if not project:
             return None
 
@@ -162,7 +163,47 @@ def get_project_data(project_id):
                         }
                         for prompt in sorted(haiku.image_prompts, key=lambda p: p.created_at, reverse=True)
                     ],
+                    "critiques": [
+                        {
+                            "creativity_score": critique.creativity_score,
+                            "vocabulary_density": critique.vocabulary_density,
+                            "rizz_level": critique.rizz_level,
+                        }
+                        for critique in sorted(haiku.critiques, key=lambda c: c.created_at, reverse=True)
+                    ],
                 }
                 for haiku in sorted(project.haikus, key=lambda h: h.created_at, reverse=True)
             ],
         }
+
+
+
+class HaikuCritiqueTable(Base):
+    ''' Stores critique scores for haikus '''
+    __tablename__ = 'ai_haiku_critique'
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    haiku_id = Column(Integer, ForeignKey('ai_haiku.id'))
+    creativity_score = Column(Integer, nullable=False)
+    vocabulary_density = Column(Integer, nullable=False)
+    rizz_level = Column(Integer, nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    haiku = relationship('HaikuTable', back_populates='critiques')
+
+
+HaikuTable.critiques = relationship('HaikuCritiqueTable', back_populates='haiku')
+
+
+def save_haiku_critique(haiku_id, critique_data):
+    """ Saves a generated critique for a haiku """
+    with get_session() as session:
+        critique = HaikuCritiqueTable(
+            haiku_id=haiku_id,
+            creativity_score=critique_data["creativity_score"],
+            vocabulary_density=critique_data["vocabulary_density"],
+            rizz_level=critique_data["rizz_level"],
+        )
+        session.add(critique)
+        session.commit()
+        return critique.id

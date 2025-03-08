@@ -35,9 +35,10 @@ from database import get_session
 from .models import (
     ProjectTable, HaikuTable, HaikuImagePromptTable,
     get_project_data, get_haiku_by_id, save_image_prompt, save_generated_image,
-    get_image_prompt_by_id
+    get_image_prompt_by_id,
+    save_haiku_critique
 )
-from .prompts import get_haiku_prompt, get_haiku_image_prompt
+from .prompts import get_haiku_prompt, get_haiku_image_prompt, get_haiku_critique_prompt
 from .schemas import Haiku, HaikuImagePrompt
 
 
@@ -115,6 +116,45 @@ async def get_projects():
 ''' New Stuff '''
 class HaikuInferRequest(BaseModel):
     haiku_id: int
+
+@router.post("/haiku-critique")
+async def generate_haiku_critique(req: HaikuInferRequest, background_tasks: BackgroundTasks):
+    haiku_id = req.haiku_id
+    haiku = get_haiku_by_id(haiku_id)
+    
+    if not haiku:
+        raise HTTPException(status_code=404, detail="Haiku not found")
+    
+    prompt_text, response_format = get_haiku_critique_prompt(haiku['text'])
+
+    # Background critique generation
+    background_tasks.add_task(process_haiku_critique, haiku_id, prompt_text, response_format)
+
+    return {"message": "Haiku critique is being generated."}
+
+
+async def process_haiku_critique(haiku_id: int, prompt_text: str, response_format):
+    """ Background task for generating haiku critique and storing it in the database """
+    try:
+        critique = await ask_llm(messages=[{"role": "user", "content": prompt_text}], response_format=response_format)
+
+        critique_data = {
+            "creativity_score": critique.creativity_score,
+            "vocabulary_density": critique.vocabulary_density,
+            "rizz_level": critique.rizz_level,
+        }
+
+        # Save critique to database
+        save_haiku_critique(haiku_id, critique_data)
+
+        # Notify WebSocket clients
+        haiku = get_haiku_by_id(haiku_id)
+        if haiku and haiku["project_id"] in project_events:
+            project_events[haiku["project_id"]].set()
+
+    except Exception as e:
+        logger.error(f"[process_haiku_critique] Exception: {e}", exc_info=True)
+
 
 
 @router.post("/generate-image-prompts")

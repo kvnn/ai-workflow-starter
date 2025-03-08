@@ -7,3 +7,9 @@ class Haiku(BaseModel):
 
 class HaikuImagePrompt(BaseModel):
     text: str
+
+
+class HaikuCritique(BaseModel):
+    creativity_score: int
+    vocabulary_density: int
+    rizz_level: int
