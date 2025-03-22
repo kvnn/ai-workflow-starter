@@ -1,7 +1,9 @@
 import base64
 import json
+from uuid import uuid4
 
 from openai import AsyncOpenAI
+from slugify import slugify
 
 from config import settings
 from logger import logger
@@ -9,73 +11,47 @@ from logger import logger
 from database import get_session
 from apps.main.models import LLMLogTable
 
-
-client = AsyncOpenAI(api_key=settings.openai_api_key)
-
-# Defaults
-if settings.env == "prod":
-    default_model = 'gpt-4o-2024-08-06'
-else:
-    default_model = 'gpt-4o-mini'
-
 default_image_model = 'dall-e-3'
 default_image_size = "1024x1024"
 default_image_response_format = 'b64_json' # or url
 default_image_style = 'natural' # or vivid
 
+client = AsyncOpenAI(api_key=settings.openai_api_key)
 
-# Inference functions
-async def get_llm_image(
-        prompt,
-        model=default_image_model,
-        n=1,
-        size=default_image_size,
-        response_format=default_image_response_format,
-        style=default_image_style
-):
-    image_response = await client.images.generate(
-        prompt=prompt,
-        model=model,
-        n=n,
-        size=size,
-        response_format=response_format,
-        style=style
-    )
+if settings.env == "prod":
+    default_model = 'gpt-4o-2024-08-06'
+    default_model = 'o3-mini'
+else:
+    default_model = 'gpt-4o-mini'
+    default_model = 'gpt-4o-2024-08-06'
+    default_model = 'o3-mini'
+
+
+async def ask_llm(messages, response_format=None, model=default_model, chain_id=None, name=None):
     
-    with get_session() as session:
-        try:
-            log_entry = LLMLogTable(
-                model=model,
-                messages=prompt,
-                response=str(image_response)[:100],
-            )
-            session.add(log_entry)
-            session.commit()
-        except Exception as e:
-            logger.error(f"Failed to log LLM call: {e}")
-            session.rollback()
-        finally:
-            session.close()
-    
-    if response_format == 'b64_json':
-        return [base64.b64decode(obj.b64_json) for obj in image_response.data]
-    return image_response
+    if not chain_id:
+        chain_id = uuid4()
 
-
-async def ask_llm(messages, response_format=None, model=default_model):
     chat_settings = {
-        'model': model, # support non-openai models
+        'model': model,
         'messages': messages,
-        'temperature': 0.1, # TODO: make this configurable
     }
+    
+    if 'o3' not in model:
+        chat_settings['temperature'] = 0.1
 
     if response_format:
         chat_settings['response_format'] = response_format
 
+    if not name:
+        try:
+            name = slugify(json.dumps(messages)[0:20])
+        except Exception as e:
+            logger.error(f"Failed to generate name for LLM call: {e}", exc_info=True)
+
     logger.info(f'****\n[ask_llm] messages={json.dumps(messages)[0:100]}...\n***********')
 
     # Initialize variables for logging
-    sql_response_data = {}
     success = False
     answer = None
     response_data = None
@@ -118,6 +94,8 @@ async def ask_llm(messages, response_format=None, model=default_model):
         try:
             log_entry = LLMLogTable(
                 model=model,
+                name=name,
+                chain_id=str(chain_id),
                 messages=messages,
                 response=sql_response_data,
                 answer=sql_answer,
@@ -133,4 +111,46 @@ async def ask_llm(messages, response_format=None, model=default_model):
 
     if not success:
         raise Exception(answer)
-    return answer
+    return answer, completion, chain_id
+
+
+async def get_llm_image(
+        prompt,
+        model=default_image_model,
+        n=1,
+        size=default_image_size,
+        response_format=default_image_response_format,
+        style=default_image_style,
+        chain_id=None
+):
+    if not chain_id:
+        chain_id = uuid4()
+    
+    image_response = await client.images.generate(
+        prompt=prompt,
+        model=model,
+        n=n,
+        size=size,
+        response_format=response_format,
+        style=style
+    )
+    
+    with get_session() as session:
+        try:
+            log_entry = LLMLogTable(
+                model=model,
+                messages=prompt,
+                response=str(image_response)[:100],
+                chain_id=str(chain_id)
+            )
+            session.add(log_entry)
+            session.commit()
+        except Exception as e:
+            logger.error(f"Failed to log LLM call: {e}")
+            session.rollback()
+        finally:
+            session.close()
+    
+    if response_format == 'b64_json':
+        return [base64.b64decode(obj.b64_json) for obj in image_response.data]
+    return image_response

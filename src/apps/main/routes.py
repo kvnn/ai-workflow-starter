@@ -23,8 +23,6 @@ from fastapi import (
 )
 from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
 from pydantic import BaseModel
-import redis
-import stripe
 
 from config import settings
 from llm import ask_llm, get_llm_image
@@ -48,45 +46,6 @@ router = APIRouter()
 project_events = {}
 websocket_connections = {}
 
-
-''' Haiku Stuff '''
-class HaikuRequest(BaseModel):
-    description: str
-    project_id: int
-
-
-@router.post("/haiku")
-async def generate_haiku(haiku_req: HaikuRequest):
-    try:
-        llm_query, llm_response_format = get_haiku_prompt(haiku_req.description)
-        haiku = await ask_llm(
-            messages=[{"role": "user", "content": llm_query}],
-            response_format=llm_response_format
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-    with get_session() as session:
-        project = session.query(ProjectTable).filter(ProjectTable.id == haiku_req.project_id).first()
-        if not project:
-            raise HTTPException(status_code=404, detail="Project not found")
-
-        new_haiku = HaikuTable(
-            project_id=haiku_req.project_id,
-            title=haiku.title,
-            text=haiku.text
-        )
-        session.add(new_haiku)
-        session.commit()
-        session.refresh(new_haiku)
-
-    # Trigger WebSocket update
-    if haiku_req.project_id in project_events:
-        project_events[haiku_req.project_id].set()
-
-    return {"success": True}
-
-    
 
 
 ''' Project Stuff '''
@@ -113,7 +72,45 @@ async def get_projects():
         return [{"id": project.id, "name": project.name} for project in projects]
 
 
-''' New Stuff '''
+''' Haiku Stuff '''
+class HaikuRequest(BaseModel):
+    description: str
+    project_id: int
+
+
+@router.post("/haiku")
+async def generate_haiku(haiku_req: HaikuRequest):
+    try:
+        llm_query, llm_response_format = get_haiku_prompt(haiku_req.description)
+        haiku, completion, chain_id = await ask_llm(
+            messages=[{"role": "user", "content": llm_query}],
+            response_format=llm_response_format
+        )
+    except Exception as e:
+        logger.error(f"Error generating haiku", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+    with get_session() as session:
+        project = session.query(ProjectTable).filter(ProjectTable.id == haiku_req.project_id).first()
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        new_haiku = HaikuTable(
+            project_id=haiku_req.project_id,
+            title=haiku.title,
+            text=haiku.text
+        )
+        session.add(new_haiku)
+        session.commit()
+        session.refresh(new_haiku)
+
+    # Trigger WebSocket update
+    if haiku_req.project_id in project_events:
+        project_events[haiku_req.project_id].set()
+
+    return {"success": True}
+
+
 class HaikuInferRequest(BaseModel):
     haiku_id: int
 
@@ -136,7 +133,7 @@ async def generate_haiku_critique(req: HaikuInferRequest, background_tasks: Back
 async def process_haiku_critique(haiku_id: int, prompt_text: str, response_format):
     """ Background task for generating haiku critique and storing it in the database """
     try:
-        critique = await ask_llm(messages=[{"role": "user", "content": prompt_text}], response_format=response_format)
+        critique, completion, chain_id = await ask_llm(messages=[{"role": "user", "content": prompt_text}], response_format=response_format)
 
         critique_data = {
             "creativity_score": critique.creativity_score,
@@ -174,10 +171,13 @@ async def generate_image_prompts(req: HaikuInferRequest, background_tasks: Backg
         get_haiku_image_prompt(haiku['text'], further_details="Write an image prompt that would make Genghis Khan proud."),
         get_haiku_image_prompt(haiku['text'], further_details="Write an image prompt for a scene that would make a Gold-specked gecko write this haiku."),
     ]
+    
+    llm_chain_id = str(uuid4())
 
     for prompt_text, response_format in prompts:
         background_tasks.add_task(
             process_image_prompt,
+            chain_id=llm_chain_id,
             haiku_id=haiku_id,
             response_format=response_format,
             prompt_text=prompt_text,
@@ -187,10 +187,10 @@ async def generate_image_prompts(req: HaikuInferRequest, background_tasks: Backg
     return {"message": "Image prompts are being generated."}
 
 
-async def process_image_prompt(haiku_id: int, prompt_text: str, project_id: int, response_format):
+async def process_image_prompt(chain_id: str, haiku_id: int, prompt_text: str, project_id: int, response_format):
     """ Background task for generating an image prompt and updating WebSocket """
     try:
-        image_prompt = await ask_llm(response_format=response_format, messages=[{"role": "user", "content": prompt_text}])
+        image_prompt, completion, chain_id = await ask_llm(chain_id=chain_id, response_format=response_format, messages=[{"role": "user", "content": prompt_text}])
         
         prompt_id = save_image_prompt(
             haiku_id,

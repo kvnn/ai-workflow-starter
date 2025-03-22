@@ -28,6 +28,8 @@ class LLMLogTable(Base):
     __tablename__ = 'ai_llm_logs'
     
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    chain_id = Column(String, nullable=False) # unique identifier for a chain of llm logs
+    name = Column(String, nullable=True)      # convenience field for analyzing llm logs. E.g. "haiku-generate"
     model = Column(String, nullable=False)
     messages = Column(JSON, nullable=False)
     response = Column(JSON, nullable=True)
