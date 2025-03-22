@@ -21,6 +21,7 @@ Key features include:
 8. open new terminal tab
 9. `cd frontend/src && npm install`
 10. `npm run dev`
+11. Visit http://localhost:5173/
 
 
 ## Reasonings
