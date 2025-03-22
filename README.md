@@ -12,15 +12,18 @@ Key features include:
 
 ## Quickstart
 1. git clone
-1. `python -m venv .venv`
-1. `source .venv/bin/activate`
-1. `cd src`
-1. `cp env.template .env` && Fill in your OPENAI_API_KEY value (unless its in ENV already)
-1. `pip install -r requirements.txt`
-1. `python -m uvicorn app:app --host 0.0.0.0 --port 8000`
-1. open new terminal tab
-1. `cd frontend/src && npm install`
-1. `npm run dev`
+2. `python -m venv .venv`
+3. `source .venv/bin/activate`
+5. `cd src`
+6. `pip install -r requirements.txt`
+7. `cp env.template .env` && Fill in your OPENAI_API_KEY value (unless its in ENV already)
+8. `python -m uvicorn app:app --host 0.0.0.0 --port 8000`
+
+in a new terminal tab:
+1.  `cd frontend/src && npm install`
+2. `npm run dev`
+3. Visit http://localhost:5173/
+
 
 
 ## Reasonings
